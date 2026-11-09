@@ -18,6 +18,44 @@ Solo la clave pública/publishable puede configurarse en el frontend. Nunca
 agregues `service_role`, el JWT secret ni credenciales de PostgreSQL a variables
 que comiencen con `VITE_`.
 
+## Despliegue con Docker
+
+La imagen compila la aplicación con `npm ci` y `npm run build`, y sirve `dist`
+con Nginx. Para compilarla, pasa las tres variables públicas que consume el
+frontend:
+
+- `VITE_API_URL`: URL base de la API Django, accesible desde el navegador del
+  usuario (no uses `localhost` salvo que la API también esté en su equipo).
+- `VITE_SUPABASE_URL`: URL del proyecto Supabase.
+- `VITE_SUPABASE_PUBLISHABLE_KEY`: clave publishable de Supabase.
+
+Por ejemplo, reemplaza los valores de ejemplo por la configuración de tu
+entorno:
+
+```bash
+docker build \
+  --build-arg VITE_API_URL=https://api.example.com \
+  --build-arg VITE_SUPABASE_URL=https://project.supabase.co \
+  --build-arg VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_example \
+  -t wms-co-logistic-frontend .
+```
+
+Inicia el contenedor y comprueba la página inicial y una ruta de la aplicación:
+
+```bash
+docker run --rm -d --name wms-frontend -p 8080:80 wms-co-logistic-frontend
+curl -i http://localhost:8080/
+curl -i http://localhost:8080/usuarios
+docker stop wms-frontend
+```
+
+Nginx devuelve `index.html` para rutas de cliente, de modo que recargar una
+ruta interna permite que React Router la gestione. Las variables `VITE_*` se
+incorporan al JavaScript durante la compilación y son visibles en el navegador:
+usa solo configuración pública; nunca incluyas secretos. Cambiar cualquiera de
+ellas requiere volver a construir la imagen. El flujo existente de Supabase
+Auth no cambia.
+
 ## HU-001: inicio de sesión
 
 - Supabase Auth valida correo y contraseña.
