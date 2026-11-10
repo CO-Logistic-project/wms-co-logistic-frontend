@@ -1,6 +1,7 @@
 import { ArrowRight, Boxes, Building2, CheckCircle2, Database, MapPinned, ShieldCheck, Users } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../features/auth/auth-context";
+import ReportsPage from "../pages/Reports/ReportsPage";
 
 const QUICK_LINKS = [
 	{ permission: "clientes.ver", to: "/clientes", label: "Clientes", description: "Gestionar cuentas logísticas", icon: Building2 },
@@ -15,6 +16,7 @@ function DashboardLayout() {
 	const { profile } = useAuth();
 	const permissions = new Set(profile?.permisos ?? []);
 	const allowedLinks = QUICK_LINKS.filter((link) => permissions.has(link.permission));
+	if (permissions.has("reportes.ver")) return <ReportsPage />;
 
 	return (
 		<section className="dashboard-page">

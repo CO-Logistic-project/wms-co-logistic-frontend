@@ -12,8 +12,18 @@ import {
   MapPinned,
   Menu,
   PackageSearch,
+  ClipboardCheck,
+  ArrowRightLeft,
+  Archive,
+  ShoppingCart,
+  Truck,
+  BarChart3,
+  Route,
+  CalendarRange,
   Search,
   ShieldCheck,
+  ServerCog,
+  PackageCheck,
   Users,
   X,
 } from "lucide-react";
@@ -40,6 +50,15 @@ const NAVIGATION: NavigationGroup[] = [
     label: "General",
     items: [
       { label: "Dashboard", description: "Resumen del sistema", to: "/", icon: LayoutDashboard },
+      { label: "Recepciones", description: "Ingreso y validación de mercancía", to: "/recepciones", icon: ClipboardCheck, permission: "recepciones.ver" },
+      { label: "Inventario", description: "Stock, ubicabilidad y vencimientos", to: "/inventario", icon: Archive, permission: "inventario.ver" },
+      { label: "Movimientos", description: "Traslados internos y reempaques", to: "/movimientos", icon: ArrowRightLeft, permission: "movimientos.ver" },
+      { label: "Pedidos", description: "Pedidos de salida y preparación", to: "/pedidos", icon: ShoppingCart, permission: "pedidos.ver" },
+      { label: "Despacho", description: "Salidas y cierre de despachos", to: "/despachos", icon: Truck, permission: "despachos.ver" },
+      { label: "Reportes y BI", description: "Indicadores y análisis operativo", to: "/reportes", icon: BarChart3, permission: "reportes.ver" },
+      { label: "Trazabilidad", description: "Historial integral por producto", to: "/trazabilidad", icon: Route, permission: "trazabilidad.ver" },
+      { label: "Planificación", description: "Capacidad y carga programada", to: "/planificacion", icon: CalendarRange, permission: "planificacion.ver" },
+      { label: "Acondicionamiento", description: "Repaletizados, reencajados y facturación", to: "/acondicionamiento", icon: PackageCheck, permission: "acondicionamiento.ver" },
     ],
   },
   {
@@ -60,6 +79,7 @@ const NAVIGATION: NavigationGroup[] = [
   {
     label: "Configuración",
     items: [
+      { label: "Operaciones técnicas", description: "Monitoreo, respaldos y despliegues", to: "/operaciones-tecnicas", icon: ServerCog, permission: "operaciones_tecnicas.ver" },
       { label: "Usuarios", description: "Accesos y perfiles", to: "/usuarios", icon: Users, permission: "usuarios.ver" },
       { label: "Roles y permisos", description: "Matrices de autorización", to: "/roles", icon: ShieldCheck, permission: "roles.ver" },
     ],

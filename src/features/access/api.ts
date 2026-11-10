@@ -63,15 +63,25 @@ export async function updateRole(roleId: number, payload: RoleWritePayload) {
 export function getApiMessage(error: unknown) {
   if (!axios.isAxiosError(error)) return "Ocurrió un error inesperado.";
 
-  const data = error.response?.data as
-    | Record<string, string | string[]>
-    | undefined;
-  if (data) {
-    for (const value of Object.values(data)) {
-      if (Array.isArray(value) && value[0]) return value[0];
-      if (typeof value === "string") return value;
+  const findMessage = (value: unknown): string | null => {
+    if (typeof value === "string") return value;
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const message = findMessage(item);
+        if (message) return message;
+      }
     }
-  }
+    if (value && typeof value === "object") {
+      for (const item of Object.values(value)) {
+        const message = findMessage(item);
+        if (message) return message;
+      }
+    }
+    return null;
+  };
+
+  const apiMessage = findMessage(error.response?.data);
+  if (apiMessage) return apiMessage;
   if (error.response?.status === 403) {
     return "No tienes permiso para realizar esta operación.";
   }

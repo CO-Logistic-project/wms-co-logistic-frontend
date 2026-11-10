@@ -5,6 +5,7 @@ interface ModalProps {
   description?: string;
   children: ReactNode;
   onClose: () => void;
+  className?: string;
 }
 
 export default function Modal({
@@ -12,6 +13,7 @@ export default function Modal({
   description,
   children,
   onClose,
+  className = "",
 }: ModalProps) {
   useEffect(() => {
     function closeOnEscape(event: KeyboardEvent) {
@@ -24,7 +26,7 @@ export default function Modal({
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
       <section
-        className="modal-panel"
+        className={`modal-panel ${className}`.trim()}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
