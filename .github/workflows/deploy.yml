@@ -1,0 +1,192 @@
+name: CI/CD Frontend WMS
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  GCP_REGION: southamerica-west1
+  AR_REPO: wms-repo
+  IMAGE_NAME: wms-frontend
+
+jobs:
+  ci:
+    name: Lint, Tests & Vite Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Verify production Vite build
+        env:
+          VITE_API_URL: /api/
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || '' }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY || '' }}
+        run: npm run build
+
+  build-and-push:
+    name: Build & Push Docker Image (GCP Artifact Registry)
+    needs: ci
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      image_sha: ${{ steps.meta.outputs.image_sha }}
+      registry: ${{ steps.meta.outputs.registry }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve Artifact Registry coordinates
+        id: meta
+        env:
+          GCP_PROJECT: ${{ vars.GCP_PROJECT_ID || 'cologistic-cloud' }}
+          SHA: ${{ github.sha }}
+        run: |
+          REGISTRY="${GCP_REGION}-docker.pkg.dev"
+          IMAGE_BASE="${REGISTRY}/${GCP_PROJECT}/${AR_REPO}/${IMAGE_NAME}"
+          echo "registry=${REGISTRY}" >> "$GITHUB_OUTPUT"
+          echo "image_sha=${IMAGE_BASE}:${SHA}" >> "$GITHUB_OUTPUT"
+          echo "image_latest=${IMAGE_BASE}:latest" >> "$GITHUB_OUTPUT"
+
+      - name: Authenticate to Google Cloud (Workload Identity Federation OIDC)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER || 'projects/637731567164/locations/global/workloadIdentityPools/github-actions/providers/github' }}
+          service_account: ${{ vars.GCP_CI_SERVICE_ACCOUNT || 'github-ci@cologistic-cloud.iam.gserviceaccount.com' }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker "${{ steps.meta.outputs.registry }}" --quiet
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.image_sha }}
+            ${{ steps.meta.outputs.image_latest }}
+          build-args: |
+            VITE_API_URL=/api/
+            VITE_SUPABASE_URL=${{ vars.VITE_SUPABASE_URL || '' }}
+            VITE_SUPABASE_PUBLISHABLE_KEY=${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY || '' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-onpremise:
+    name: Deploy to WMS01 & WMS02 (Tailscale VPN)
+    needs: build-and-push
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: wms-deploy-onpremise
+      cancel-in-progress: false
+    steps:
+      - name: Authenticate to Google Cloud (Workload Identity Federation OIDC)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER || 'projects/637731567164/locations/global/workloadIdentityPools/github-actions/providers/github' }}
+          service_account: ${{ vars.GCP_CI_SERVICE_ACCOUNT || 'github-ci@cologistic-cloud.iam.gserviceaccount.com' }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Connect to CoLogistic Tailscale Network
+        uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+          args: --accept-routes --hostname=gha-wms-frontend-${{ github.run_id }}
+
+      - name: Rolling deploy frontend (WMS01 -> WMS02)
+        env:
+          REGISTRY: ${{ needs.build-and-push.outputs.registry }}
+          IMAGE_SHA: ${{ needs.build-and-push.outputs.image_sha }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER || 'ci-deploy' }}
+          WMS01_HOST: ${{ vars.WMS01_HOST || '10.10.31.11' }}
+          WMS02_HOST: ${{ vars.WMS02_HOST || '10.10.31.12' }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          AR_TOKEN="$(gcloud auth print-access-token)"
+          echo "::add-mask::${AR_TOKEN}"
+
+          echo "[CI] Verificando alcance privado vía Tailscale hacia ${WMS01_HOST}:22..."
+          for attempt in $(seq 1 15); do
+            if nc -z -w 3 "${WMS01_HOST}" 22; then
+              break
+            fi
+            sleep 2
+          done
+
+          for HOST in "${WMS01_HOST}" "${WMS02_HOST}"; do
+            echo "[CI] === Desplegando wms-frontend en ${HOST} ==="
+            printf '%s\n' "${AR_TOKEN}" | ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 \
+              "${DEPLOY_USER}@${HOST}" "docker login -u oauth2accesstoken --password-stdin '${REGISTRY}'"
+
+            ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 \
+              "${DEPLOY_USER}@${HOST}" \
+              "REGISTRY='${REGISTRY}' IMAGE_SHA='${IMAGE_SHA}' bash -s" <<'REMOTE_EOF'
+          set -euo pipefail
+          trap "docker logout '${REGISTRY}' >/dev/null 2>&1 || true" EXIT
+
+          docker pull "${IMAGE_SHA}"
+          docker tag "${IMAGE_SHA}" cologistic/wms-frontend:latest
+
+          cd /opt/wms
+          if docker image inspect cologistic/wms-backend:latest >/dev/null 2>&1; then
+            docker compose up -d
+            echo "[CD] Verificando HTTPS SPA y proxy /api/health/ en $(hostname)..."
+            for i in $(seq 1 15); do
+              if curl -ksf -o /dev/null https://127.0.0.1/ && curl -ksf https://127.0.0.1/api/health/ >/dev/null; then
+                echo "[CD] Frontend + API Proxy operativos en $(hostname)"
+                exit 0
+              fi
+              sleep 2
+            done
+            echo "[CD] ERROR: https://127.0.0.1/ o /api/health/ no respondió en $(hostname)" >&2
+            exit 1
+          else
+            echo "[CD] Imagen wms-frontend:latest precargada; wms-backend aún no está presente en $(hostname)."
+          fi
+          REMOTE_EOF
+          done
+
+      - name: Clean up SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
