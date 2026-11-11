@@ -156,16 +156,18 @@ jobs:
 
           for HOST in "${WMS01_HOST}" "${WMS02_HOST}"; do
             echo "[CI] === Desplegando wms-frontend en ${HOST} ==="
+            REMOTE_DC="$(ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 \
+              "${DEPLOY_USER}@${HOST}" "mktemp -d")"
             printf '%s\n' "${AR_TOKEN}" | ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 \
-              "${DEPLOY_USER}@${HOST}" "docker login -u oauth2accesstoken --password-stdin '${REGISTRY}'"
+              "${DEPLOY_USER}@${HOST}" "DOCKER_CONFIG='${REMOTE_DC}' docker login -u oauth2accesstoken --password-stdin '${REGISTRY}'"
 
             ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 \
               "${DEPLOY_USER}@${HOST}" \
-              "REGISTRY='${REGISTRY}' IMAGE_SHA='${IMAGE_SHA}' bash -s" <<'REMOTE_EOF'
+              "REGISTRY='${REGISTRY}' IMAGE_SHA='${IMAGE_SHA}' REMOTE_DC='${REMOTE_DC}' bash -s" <<'REMOTE_EOF'
           set -euo pipefail
-          trap "docker logout '${REGISTRY}' >/dev/null 2>&1 || true" EXIT
+          trap 'rm -rf "${REMOTE_DC}"' EXIT
 
-          docker pull "${IMAGE_SHA}"
+          DOCKER_CONFIG="${REMOTE_DC}" docker pull "${IMAGE_SHA}"
           docker tag "${IMAGE_SHA}" cologistic/wms-frontend:latest
 
           cd /opt/wms
