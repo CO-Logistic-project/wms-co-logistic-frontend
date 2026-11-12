@@ -87,3 +87,8 @@ export function getApiMessage(error: unknown) {
   }
   return "No pudimos completar la operación. Inténtalo nuevamente.";
 }
+
+export async function resetUserPassword(userId: string) {
+  const { data } = await api.post<{ id_usuario: string; password_temporal: string }>(`users/${userId}/password/reset/`);
+  return data;
+}

@@ -50,7 +50,7 @@ function WarehouseMark() {
 
 function Login() {
   const navigate = useNavigate();
-  const { configured, signIn, status } = useAuth();
+  const { configured, signIn, status, mustChangePassword } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -59,9 +59,9 @@ function Login() {
 
   useEffect(() => {
     if (status === "authenticated") {
-      navigate("/", { replace: true });
+      navigate(mustChangePassword ? "/cambiar-contrasena" : "/", { replace: true });
     }
-  }, [navigate, status]);
+  }, [navigate, status, mustChangePassword]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -81,7 +81,6 @@ function Login() {
 
     try {
       await signIn(email, password);
-      navigate("/", { replace: true });
     } catch (signInError) {
       setError(
         signInError instanceof Error
@@ -92,6 +91,8 @@ function Login() {
       setSubmitting(false);
     }
   }
+
+  if (status === "loading") return <main className="session-loading">Validando sesión…</main>;
 
   return (
     <main className="login-page">
@@ -174,7 +175,7 @@ function Login() {
 
             {!configured && (
               <div className="login-error" role="status">
-                Falta configurar Supabase Auth en el archivo .env.
+                No se pudo configurar el acceso.
               </div>
             )}
 

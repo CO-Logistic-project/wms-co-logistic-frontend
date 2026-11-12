@@ -226,7 +226,8 @@ export default function AppShell() {
             </button>
             {accountOpen && (
               <div className="account-popover">
-                <div><strong>{profile?.correo}</strong><small>Sesión protegida por Supabase + Django</small></div>
+                <div><strong>{profile?.correo}</strong><small>Acceso seguro al WMS</small></div>
+                <button type="button" onClick={() => { setAccountOpen(false); navigate("/cambiar-contrasena"); }}>Cambiar contraseña</button>
                 {logoutError && <p role="alert">{logoutError}</p>}
                 <button type="button" onClick={handleSignOut} disabled={signingOut}><LogOut size={16} />{signingOut ? "Cerrando…" : "Cerrar sesión"}</button>
               </div>

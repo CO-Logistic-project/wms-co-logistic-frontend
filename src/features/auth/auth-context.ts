@@ -12,12 +12,19 @@ export interface UserAccessProfile {
   apellido: string;
   roles: UserRole[];
   permisos: string[];
+  debe_cambiar_password?: boolean;
 }
 
 export type AuthStatus = "loading" | "authenticated" | "anonymous";
 
 export interface AuthContextValue {
   configured: boolean;
+  user: UserAccessProfile | null;
+  loading: boolean;
+  mustChangePassword: boolean;
+  login: (correo: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
+  changePassword: (actual: string, nueva: string) => Promise<void>;
   profile: UserAccessProfile | null;
   status: AuthStatus;
   signIn: (email: string, password: string) => Promise<void>;
