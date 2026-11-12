@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../features/auth/auth-context";
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { status } = useAuth();
+  const { status, mustChangePassword } = useAuth();
+  const location = useLocation();
 
   if (status === "loading") {
     return (
@@ -17,6 +18,8 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
   if (status !== "authenticated") {
     return <Navigate to="/login" replace />;
   }
+
+  if (mustChangePassword && location.pathname !== "/cambiar-contrasena") return <Navigate to="/cambiar-contrasena" replace />;
 
   return children;
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import Modal from "../../components/Modal";
 import {
+  resetUserPassword,
   assignUserRoles,
   createUser,
   getApiMessage,
@@ -55,6 +56,28 @@ export default function UsersPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [statusTarget, setStatusTarget] = useState<ManagedUser | null>(null);
+  const [resetTarget, setResetTarget] = useState<ManagedUser | null>(null);
+  const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
+  const [resetting, setResetting] = useState(false);
+  const [copyMessage, setCopyMessage] = useState("");
+  async function copyTemporaryPassword() {
+    if (!temporaryPassword) return;
+    try {
+      await navigator.clipboard.writeText(temporaryPassword);
+      setCopyMessage("Copiada");
+    } catch {
+      setCopyMessage("No se pudo copiar. Copia la clave manualmente.");
+    }
+  }
+  async function confirmReset() {
+    if (!resetTarget) return;
+    setResetting(true);
+    try {
+      const result = await resetUserPassword(resetTarget.id_usuario);
+      setTemporaryPassword(result.password_temporal); setCopyMessage(""); setResetTarget(null);
+    } catch (error) { setPageError(getApiMessage(error)); setResetTarget(null); }
+    finally { setResetting(false); }
+  }
   const [changingStatus, setChangingStatus] = useState(false);
 
   const loadData = useCallback(async (term = "") => {
@@ -196,7 +219,7 @@ export default function UsersPage() {
                   <td><div className="tag-list">{user.roles.length ? user.roles.map((role) => <span className="role-tag" key={role.id_rol}>{role.nombre}</span>) : <span className="muted-copy">Sin rol</span>}</div></td>
                   <td><span className={`status-pill ${user.estado ? "active" : "inactive"}`}><i />{user.estado ? "Activo" : "Inactivo"}</span></td>
                   <td>{formatDate(user.fecha_registro)}</td>
-                  <td><div className="row-actions">{canEdit && <button className="table-action" type="button" onClick={() => openEdit(user)}>Editar</button>}{canDeactivate && user.id_usuario !== profile?.id && <button className={`table-action ${user.estado ? "danger" : "success"}`} type="button" onClick={() => setStatusTarget(user)}>{user.estado ? "Desactivar" : "Reactivar"}</button>}</div></td>
+                  <td><div className="row-actions">{canEdit && user.id_usuario !== profile?.id && <button className="table-action" type="button" onClick={() => setResetTarget(user)}>Restablecer contraseña</button>}{canEdit && <button className="table-action" type="button" onClick={() => openEdit(user)}>Editar</button>}{canDeactivate && user.id_usuario !== profile?.id && <button className={`table-action ${user.estado ? "danger" : "success"}`} type="button" onClick={() => setStatusTarget(user)}>{user.estado ? "Desactivar" : "Reactivar"}</button>}</div></td>
                 </tr>
               ))}
               {!users.length && <tr><td colSpan={5}><div className="empty-state"><strong>No encontramos usuarios</strong><span>Prueba otro término de búsqueda.</span></div></td></tr>}
@@ -206,7 +229,7 @@ export default function UsersPage() {
       )}
 
       {modalOpen && (
-        <Modal title={editing ? "Editar usuario" : "Registrar usuario"} description={editing ? "Actualiza la información de acceso sin crear duplicados." : "La cuenta se creará en Supabase Auth y en el WMS."} onClose={() => !saving && setModalOpen(false)}>
+        <Modal title={editing ? "Editar usuario" : "Registrar usuario"} description={editing ? "Actualiza la información de acceso sin crear duplicados." : "La cuenta se registra en el WMS."} onClose={() => !saving && setModalOpen(false)}>
           <form className="management-form" onSubmit={submitUser}>
             <div className="form-grid">
               <label><span>Nombre</span><input value={form.nombre} onChange={(event) => setForm({ ...form, nombre: event.target.value })} autoFocus maxLength={255} required /></label>
@@ -221,11 +244,20 @@ export default function UsersPage() {
         </Modal>
       )}
 
+      {resetTarget && <Modal title="Restablecer contraseña" onClose={() => !resetting && setResetTarget(null)}>
+        <p>¿Confirmas restablecer la contraseña de {resetTarget.correo}?</p>
+        <footer className="modal-actions"><button type="button" disabled={resetting} onClick={() => setResetTarget(null)}>Cancelar</button><button type="button" disabled={resetting} onClick={() => void confirmReset()}>{resetting ? "Procesando…" : "Confirmar restablecimiento"}</button></footer>
+      </Modal>}
+      {temporaryPassword && <Modal title="Contraseña temporal" description="El usuario deberá cambiarla al ingresar" onClose={() => { setTemporaryPassword(null); setCopyMessage(""); }}>
+        <p>Esta clave se muestra una sola vez.</p><output>{temporaryPassword}</output>
+        <button type="button" onClick={() => void copyTemporaryPassword()}>Copiar</button>
+        {copyMessage && <p role="status">{copyMessage}</p>}
+      </Modal>}
       {statusTarget && (
         <Modal title={statusTarget.estado ? "Desactivar usuario" : "Reactivar usuario"} description={statusTarget.estado ? "La cuenta perderá acceso inmediatamente al WMS." : "La cuenta podrá iniciar sesión nuevamente."} onClose={() => !changingStatus && setStatusTarget(null)}>
           <div className="confirmation-body">
             <p>¿Confirmas que deseas {statusTarget.estado ? "desactivar" : "reactivar"} a <strong>{statusTarget.nombre} {statusTarget.apellido}</strong>?</p>
-            <div className="confirmation-note"><span aria-hidden="true">!</span><p>{statusTarget.estado ? "Sus solicitudes serán rechazadas por Django y Supabase Auth bloqueará nuevos inicios de sesión." : "Conservará los roles y permisos que tenía asignados."}</p></div>
+            <div className="confirmation-note"><span aria-hidden="true">!</span><p>{statusTarget.estado ? "La cuenta pierde acceso al sistema." : "Conservará los roles y permisos que tenía asignados."}</p></div>
             <footer className="modal-actions"><button className="secondary-button" type="button" onClick={() => setStatusTarget(null)} disabled={changingStatus}>Cancelar</button><button className={`action-button ${statusTarget.estado ? "danger-button" : ""}`} type="button" onClick={() => void confirmStatusChange()} disabled={changingStatus}>{changingStatus ? "Procesando…" : statusTarget.estado ? "Sí, desactivar" : "Sí, reactivar"}</button></footer>
           </div>
         </Modal>

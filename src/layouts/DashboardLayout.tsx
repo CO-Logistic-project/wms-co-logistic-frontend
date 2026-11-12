@@ -48,7 +48,7 @@ function DashboardLayout() {
 					<div className="security-panel-icon"><ShieldCheck size={24} /></div>
 					<span className="page-eyebrow">Seguridad auditada</span>
 					<h2>Protección en dos capas</h2>
-					<p>Supabase valida tu identidad y Django controla cada acción según los permisos efectivos de tu cuenta.</p>
+					<p>El WMS valida tu identidad y controla cada acción según los permisos efectivos de tu cuenta.</p>
 					<ul><li><CheckCircle2 size={15} /> Sesión cifrada</li><li><CheckCircle2 size={15} /> Permisos por rol</li><li><CheckCircle2 size={15} /> Cuentas inactivas bloqueadas</li></ul>
 				</aside>
 			</div>

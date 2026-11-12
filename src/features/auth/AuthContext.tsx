@@ -1,137 +1,60 @@
-import type { ReactNode } from "react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import axios from "axios";
-import api from "../../services/api";
-import { isSupabaseConfigured, supabase } from "../../lib/supabase";
-import {
-  AuthContext,
-  type AuthStatus,
-  type UserAccessProfile,
-} from "./auth-context";
-
-const INVALID_CREDENTIALS_MESSAGE = "Correo o contraseña incorrectos.";
-
-function getApiErrorMessage(error: unknown) {
-  if (axios.isAxiosError(error)) {
-    if (error.response?.status === 401 || error.response?.status === 403) {
-      return "Tu cuenta no está habilitada para acceder al sistema.";
-    }
-
-    if (error.response?.status === 503) {
-      return "No pudimos validar tu acceso. Inténtalo nuevamente.";
-    }
-  }
-
-  return "No pudimos iniciar sesión. Verifica tu conexión e inténtalo nuevamente.";
-}
+import api, { authEvents, refreshSession, type TokenResponse } from "../../services/api";
+import { setAccessToken } from "./token";
+import { AuthContext, type AuthStatus, type UserAccessProfile } from "./auth-context";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [profile, setProfile] = useState<UserAccessProfile | null>(null);
-
-  const loadAuthorizedProfile = useCallback(async () => {
-    const response = await api.get<UserAccessProfile>("auth/me/");
-    setProfile(response.data);
-    setStatus("authenticated");
+  const [mustChangePassword, setMustChangePassword] = useState(false);
+  const clearSession = useCallback(() => {
+    setAccessToken(null); setProfile(null); setMustChangePassword(false); setStatus("anonymous");
   }, []);
-
+  const loadAuthorizedProfile = useCallback(async () => {
+    const { data } = await api.get<UserAccessProfile>("auth/me/");
+    setProfile(data); setMustChangePassword(Boolean(data.debe_cambiar_password)); setStatus("authenticated");
+    return data;
+  }, []);
   useEffect(() => {
     let active = true;
-
-    async function restoreSession() {
-      if (!supabase) {
-        if (active) setStatus("anonymous");
-        return;
-      }
-
-      const { data, error } = await supabase.auth.getSession();
-
+    const required = () => setMustChangePassword(true);
+    authEvents.addEventListener("session-expired", clearSession);
+    authEvents.addEventListener("password-required", required);
+    void refreshSession().then(async (tokens) => {
       if (!active) return;
-
-      if (error || !data.session) {
-        setProfile(null);
-        setStatus("anonymous");
-        return;
-      }
-
-      try {
-        await loadAuthorizedProfile();
-      } catch {
-        await supabase.auth.signOut();
-        if (active) {
-          setProfile(null);
-          setStatus("anonymous");
-        }
-      }
-    }
-
-    void restoreSession();
-
-    const authListener = supabase?.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_OUT" && active) {
-        setProfile(null);
-        setStatus("anonymous");
-      }
-    });
-
+      await loadAuthorizedProfile();
+      if (active && tokens.debe_cambiar_password) setMustChangePassword(true);
+    }).catch(() => { if (active) clearSession(); });
     return () => {
       active = false;
-      authListener?.data.subscription.unsubscribe();
+      authEvents.removeEventListener("session-expired", clearSession);
+      authEvents.removeEventListener("password-required", required);
     };
-  }, [loadAuthorizedProfile]);
-
-  const signIn = useCallback(
-    async (email: string, password: string) => {
-      if (!supabase) {
-        throw new Error("Supabase Auth no está configurado.");
-      }
-
-      const { error } = await supabase.auth.signInWithPassword({
-        email: email.trim().toLowerCase(),
-        password,
-      });
-
-      if (error) {
-        throw new Error(INVALID_CREDENTIALS_MESSAGE);
-      }
-
-      try {
-        await loadAuthorizedProfile();
-      } catch (error) {
-        await supabase.auth.signOut();
-        throw new Error(getApiErrorMessage(error), { cause: error });
-      }
-    },
-    [loadAuthorizedProfile],
-  );
-
-  const signOut = useCallback(async () => {
-    if (supabase) {
-      const { error } = await supabase.auth.signOut({ scope: "local" });
-      if (error) {
-        throw new Error("No pudimos cerrar la sesión. Inténtalo nuevamente.");
-      }
+  }, [clearSession, loadAuthorizedProfile]);
+  const signIn = useCallback(async (correo: string, password: string) => {
+    try {
+      const { data } = await api.post<TokenResponse>("auth/login/", { correo: correo.trim().toLowerCase(), password });
+      setAccessToken(data.access);
+      const me = await loadAuthorizedProfile();
+      setMustChangePassword(data.debe_cambiar_password || Boolean(me.debe_cambiar_password));
+    } catch (error) {
+      clearSession();
+      throw new Error(axios.isAxiosError(error) && typeof error.response?.data?.detail === "string"
+        ? error.response.data.detail : "No pudimos iniciar sesión. Verifica tu conexión e inténtalo nuevamente.", { cause: error });
     }
-    setProfile(null);
-    setStatus("anonymous");
-  }, []);
-
-  const value = useMemo(
-    () => ({
-      configured: isSupabaseConfigured,
-      profile,
-      status,
-      signIn,
-      signOut,
-      refreshProfile: loadAuthorizedProfile,
-    }),
-    [loadAuthorizedProfile, profile, signIn, signOut, status],
-  );
-
+  }, [clearSession, loadAuthorizedProfile]);
+  const signOut = useCallback(async () => {
+    try { await api.post("auth/logout/"); } finally { clearSession(); }
+  }, [clearSession]);
+  const changePassword = useCallback(async (actual: string, nueva: string) => {
+    const { data } = await api.post<TokenResponse>("auth/password/change/", { password_actual: actual, password_nueva: nueva });
+    setAccessToken(data.access);
+    await loadAuthorizedProfile();
+    setMustChangePassword(data.debe_cambiar_password);
+  }, [loadAuthorizedProfile]);
+  const value = useMemo(() => ({ configured: true, profile, user: profile, status, loading: status === "loading", mustChangePassword,
+    signIn, login: signIn, signOut, logout: signOut, changePassword, refreshProfile: async () => { await loadAuthorizedProfile(); } }),
+    [profile, status, mustChangePassword, signIn, signOut, changePassword, loadAuthorizedProfile]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

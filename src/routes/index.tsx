@@ -1,4 +1,4 @@
-import { createBrowserRouter } from "react-router-dom";
+import { createBrowserRouter, Navigate } from "react-router-dom";
 
 import Login from "../pages/Login/Login";
 import DashboardLayout from "../layouts/DashboardLayout";
@@ -6,7 +6,7 @@ import AppShell from "../layouts/AppShell";
 import UsersPage from "../pages/Users/UsersPage";
 import RolesPage from "../pages/Roles/RolesPage";
 import ForgotPasswordPage from "../pages/PasswordRecovery/ForgotPasswordPage";
-import ResetPasswordPage from "../pages/PasswordRecovery/ResetPasswordPage";
+import ChangePasswordPage from "../pages/PasswordRecovery/ChangePasswordPage";
 import ClientsPage from "../pages/Clients/ClientsPage";
 import ProductsPage from "../pages/Products/ProductsPage";
 import WarehousesPage from "../pages/Warehouses/WarehousesPage";
@@ -26,6 +26,7 @@ import ProtectedRoute from "./ProtectedRoute";
 import PermissionRoute from "./PermissionRoute";
 
 const router = createBrowserRouter([
+  { path: "/cambiar-contrasena", element: <ProtectedRoute><ChangePasswordPage /></ProtectedRoute> },
 	{
 		path: "/login",
 		element: <Login />,
@@ -36,7 +37,7 @@ const router = createBrowserRouter([
 	},
 	{
 		path: "/restablecer-contrasena",
-		element: <ResetPasswordPage />,
+		element: <Navigate to="/login" replace />,
 	},
 	{
 		path: "/",
