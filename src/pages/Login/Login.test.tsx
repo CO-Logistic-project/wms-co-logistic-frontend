@@ -34,7 +34,7 @@ describe("Login", () => {
     expect(signIn).not.toHaveBeenCalled();
   });
 
-  it("shows a generic error when credentials are rejected", async () => {
+  it("shows the error detail when credentials are rejected", async () => {
     signIn.mockRejectedValueOnce(new Error("Correo o contraseña incorrectos."));
     render(
       <MemoryRouter>
